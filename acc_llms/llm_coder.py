@@ -1,9 +1,22 @@
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
+# from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 from langchain.schema import SystemMessage
 from typing import List, Dict
 import pandas as pd
 import logging
+import os
+
+import tiktoken
+
+embedding_encoding = "cl100k_base"
+encoding = tiktoken.get_encoding(embedding_encoding)
+
+def truncate_text(text, max_tokens=15000):
+    tokens = encoding.encode(text)
+    if len(tokens) > max_tokens:
+        return encoding.decode(tokens[:max_tokens])
+    return text
 
 
 class Admission(BaseModel):
@@ -16,6 +29,10 @@ class Patient(BaseModel):
 
 def convert_dataframe_to_text(df):
     logging.info("Commencing dataframe conversion to text")
+    text_columns = df.select_dtypes("object").columns.tolist()
+    for col in text_columns:
+        df[col] = df[col].apply(lambda x: truncate_text(x)).tolist()
+
     all_subjects = {}
     for index, row in df.iterrows():
         # print(f"Subject id: {row.subject_id} - Admission ID: {row.hadm_id}")
@@ -24,11 +41,11 @@ def convert_dataframe_to_text(df):
         microbiology = f"The patient has had {0 if pd.isna(row.microevent_count) else int(row.microevent_count)} microbiology tests. The following comments on the tests are as follows::: {row.microbiology_details} "
         pharmacy = f"The patient has been prescribed the following medicines by the pharmacy: {0 if pd.isna(row.pharmacy_count) else int(row.pharmacy_count)}. In more details::: {row.pharmacy_details}"
 
-        if row.subject_id not in all_subjects.keys():            
-            all_subjects[row.subject_id] = {
+        if row.name[0] not in all_subjects.keys():            
+            all_subjects[row.name[0]] = {
                 "subject_details": subject_information,
                 "admissions": [
-                    {row.hadm_id: {
+                    {row.name[1]: {
                         "admission_details":row.admission_details,
                         "drg_details":row.drg_details,
                         "medication_details":row.medication_details,
@@ -39,8 +56,8 @@ def convert_dataframe_to_text(df):
                     ]  
             }
         else:
-            all_subjects[row.subject_id]["admissions"].append({
-                row.hadm_id: {
+            all_subjects[row.name[0]]["admissions"].append({
+                row.name[1]: {
                         "admission_details":row.admission_details,
                         "drg_details":row.drg_details,
                         "medication_details":row.medication_details,
@@ -52,9 +69,31 @@ def convert_dataframe_to_text(df):
     return all_subjects
 
 def get_icd_llm(llm, training_sample, icd_definitions, subject_id, subject_details, admission_id, admission_details, drg_details, medication_details, labevents_details, microbiology_details, pharmacy_details):
-    system_role = f"You are a helpful clinical coder and your task is to use the following ICD definitions and assign diagnosis codes (ICD codes) from the notes and data provided - {icd_definitions}. The user will provide text and and your role is to assign a code. Below is an example of an ICD code and the input text that you will receive, consider this training data. {training_sample}"
-    human_prompt = "Predict an ICD code for the following subject strictly based on the admission information. \n\nDO NOT USE CODES THAT ARE NOT LISTED ABOVE. ENSURE THAT THE ICD_CODE OUTPUT IS LESS THAN 6 CHARACTERS AND ONLY CONTAINS THE CODE NOT THE DEFINITION.\nHere is some information on the Patient: subject_id={subject_id} - {subject_details}\nHere is information on the patients admission details (admission_id={admission_id}) that requires a diagnosis code: Admission information:{admission_details}\nDiagnosis Related Groups:{drg_details}\nMedication Information:{medication_details}\nLab Event Information:{labevents_details}\nMicrobiology Information{microbiology_details}\nPharmacy Information: {pharmacy_details}"
-    # group_schema = "output must be a python dictionary of a single key 'subject_id' and the value must be a python dictionary. In this python dictionary, each key must be the 'admission_id' and the value must be a python string consisting of the diagnosis code (Only the ICD code e.g. B12.8  & not the definition)"
+    # system_role = f"You are a helpful clinical coder and your task is to use the following ICD definitions and assign diagnosis codes (ICD codes) from the notes and data provided - {icd_definitions}. The user will provide text and and your role is to assign a code. Below is an example of an ICD code and the input text that you will receive, consider this training data. {training_sample}"
+    # human_prompt = "Predict an ICD code for the following subject strictly based on the admission information. \n\nDO NOT USE CODES THAT ARE NOT LISTED ABOVE. ENSURE THAT THE ICD_CODE OUTPUT IS LESS THAN 6 CHARACTERS AND ONLY CONTAINS THE CODE NOT THE DEFINITION.\nHere is some information on the Patient: subject_id={subject_id} - {subject_details}\nHere is information on the patients admission details (admission_id={admission_id}) that requires a diagnosis code: Admission information:{admission_details}\nDiagnosis Related Groups:{drg_details}\nMedication Information:{medication_details}\nLab Event Information:{labevents_details}\nMicrobiology Information{microbiology_details}\nPharmacy Information: {pharmacy_details}"
+    system_role = f"""
+You are a proficient clinical coder. Your task is to review the provided notes and patient information and assign the appropriate ICD diagnosis codes strictly from the following ICD definitions: {icd_definitions}. Ensure that all diagnosis codes are from the provided list, following the guidelines exactly. You will receive patient details and associated clinical data, and your task is to assign the correct diagnosis code based on that information. Here is a training example for your reference: {training_sample}.
+"""
+    human_prompt = f"""
+Based on the patient's admission details, predict the ICD code. Adhere strictly to the provided ICD code list and ensure the output format follows these rules:
+- The ICD code must be from the listed codes above.
+- It should be less than 6 characters and contain only the code (no additional text or explanation).
+- Do not include codes that are not part of the provided list.
+
+Patient information: 
+- Subject ID: {subject_id} - {subject_details}
+- Admission details (Admission ID: {admission_id}): {admission_details}
+
+Additional data:
+- Diagnosis Related Groups: {drg_details}
+- Medication Information: {medication_details}
+- Lab Events: {labevents_details}
+- Microbiology Information: {microbiology_details}
+- Pharmacy Information: {pharmacy_details}
+"""
+
+
+
 
     structured_llm = llm.with_structured_output(Patient, method="json_mode")
     prompt = ChatPromptTemplate(
@@ -82,7 +121,12 @@ def get_icd_llm(llm, training_sample, icd_definitions, subject_id, subject_detai
     retries = 0
     while not success and retries < 5:
         try:
-            base_prompt = f"Using the following commands, respond in JSON with the 'subject_id' as keys and the values are a list of JSONs with 'admission_id' and 'icd_code' and 'predictive_reasoning' as keys. {_input.to_messages()}"
+            base_prompt = f"""
+Using the following commands, respond in JSON format with the following structure:
+- 'subject_id' as keys.
+- The values should be a list of JSON objects containing the keys 'admission_id', 'icd_code', and 'predictive_reasoning'.
+{_input.to_messages()}
+"""
             output = structured_llm.invoke(base_prompt)
             if type(output.__root__) is dict:
                 codes = []
@@ -109,39 +153,55 @@ def get_icd_llm(llm, training_sample, icd_definitions, subject_id, subject_detai
 
 
 def get_output(training_sample, all_subjects, icd_definitions, project_dir, llm):
-    df_output = pd.DataFrame(columns=["subject_id", "admit_id", "predicted_icd", "predictive_reasoning"])
-    for subj, info in all_subjects.items():
+    output_file = "llm_model_predicted_icd_data_temp.pkl"
+    if output_file in os.listdir(f"{project_dir}/data/altered_data"):
+        print("Output file exists")
+        df_output = pd.read_pickle(f"{project_dir}/data/altered_data/{output_file}")
+    else:
+        df_output = pd.DataFrame(columns=["subject_id", "admit_id", "predicted_icd", "predictive_reasoning"])
+    iteration=0
+    
+    for i, (subj, info) in enumerate(all_subjects.items()):
         for admissions in info["admissions"]:
             for admit_id, admit_info in admissions.items():
-                logging.info(f"Predicting ICD for Patient {subj} with Admission ID: {admit_id}")
-                each_output = get_icd_llm(
-                    llm=llm,
-                    training_sample=training_sample, 
-                    icd_definitions=icd_definitions, 
-                    subject_id=subj, 
-                    subject_details=info["subject_details"], 
-                    admission_id=admit_id, 
-                    admission_details=admit_info["admission_details"], 
-                    drg_details=admit_info["drg_details"], 
-                    medication_details=admit_info["medication_details"], 
-                    labevents_details=admit_info["labevents_details"], 
-                    microbiology_details=admit_info["microbiology_details"], 
-                    pharmacy_details=admit_info["pharmacy_details"]
-                    )
-            codes = []
-            reasons = []
-            for adm in each_output.__root__[f"{subj}"]:
-                codes.append(adm.icd_code)
-                reasons.append(adm.predictive_reasoning)
+                if (subj in df_output.subject_id.unique()) & (admit_id in df_output.admit_id.unique()):
+                    print("Already outputted")
+                    iteration += 1
+                else:
+                    # print(f"Trying subj:{subj} & hadm: {admit_id}")
+                    each_output = get_icd_llm(
+                        llm=llm,
+                        training_sample=training_sample, 
+                        icd_definitions=icd_definitions, 
+                        subject_id=subj, 
+                        subject_details=info["subject_details"], 
+                        admission_id=admit_id, 
+                        admission_details=admit_info["admission_details"], 
+                        drg_details=admit_info["drg_details"], 
+                        medication_details=admit_info["medication_details"], 
+                        labevents_details=admit_info["labevents_details"], 
+                        microbiology_details=admit_info["microbiology_details"], 
+                        pharmacy_details=admit_info["pharmacy_details"]
+                        )
+                    codes = []
+                    reasons = []
+                    for adm in each_output.__root__[f"{subj}"]:
+                        codes.append(adm.icd_code)
+                        reasons.append(adm.predictive_reasoning)
 
-            df_output = df_output._append({
-                "subject_id":subj,
-                "admit_id":admit_id,
-                "predicted_icd":codes,
-                "predictive_reasoning": reasons
-                }, ignore_index=True)
-            df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
+                    df_output = df_output._append({
+                        "subject_id":subj,
+                        "admit_id":admit_id,
+                        "predicted_icd":codes,
+                        "predictive_reasoning": reasons
+                        }, ignore_index=True)
+                    df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
+                    iteration+=1
+                if iteration % 500 == 0:
+                    logging.info(f"Iteration {i}/{len(all_subjects)}")
     df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data.pkl")
+    os.remove(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
+    return df_output
 
 
 
