@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import xgboost as xgb
 import pandas as pd
 import logging
-from datetime import datetime
 
 def convert_timedelta(duration):
     """

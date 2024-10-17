@@ -1,13 +1,12 @@
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
-# from langchain_core.pydantic_v1 import BaseModel, Field
-from pydantic.v1 import BaseModel, Field
 from langchain.schema import SystemMessage
+from pydantic.v1 import BaseModel, Field
 from typing import List, Dict
 import pandas as pd
+import tiktoken
 import logging
 import os
 
-import tiktoken
 
 embedding_encoding = "cl100k_base"
 encoding = tiktoken.get_encoding(embedding_encoding)

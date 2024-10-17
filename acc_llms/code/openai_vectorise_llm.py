@@ -1,13 +1,10 @@
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_openai import OpenAIEmbeddings
 import pandas as pd
 import tiktoken
 import logging
-import openai
-import time
-from langchain_core.vectorstores import InMemoryVectorStore
-import multiprocessing
 import pickle
+import time
 import os
 
 embedding_encoding = "cl100k_base"

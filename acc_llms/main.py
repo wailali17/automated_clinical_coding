@@ -9,26 +9,26 @@ import pathlib
 import openai
 import json
 
-import utils
-import data_prep as dp
-import baseline_coder as bc
-import openai_vectorise_llm as ovl
-import llm_coder as llmc
+from code import utils
+from code import data_prep as dp
+from code import baseline_coder as bc
+from code import openai_vectorise_llm as ovl
+from code import llm_coder as llmc
 
 
 def main_data_prep(project_dir):
     logging.info("Initiating data preparation")
-    # df, icd_definitions = dp.data_prep(project_dir=project_dir)
-    # df["subject_id"] = df.subject_id.astype("object")
-    # df["hadm_id"] = df.hadm_id.astype("object")
+    df, icd_definitions = dp.data_prep(project_dir=project_dir)
+    df["subject_id"] = df.subject_id.astype("object")
+    df["hadm_id"] = df.hadm_id.astype("object")
 
-    # df.to_pickle(f"{project_dir}/data/altered_data/input_data.pkl")
-    # with open(f"{project_dir}/data/definitions/icd_defintions.txt", "w") as file:
-    #     file.write(icd_definitions)
+    df.to_pickle(f"{project_dir}/data/altered_data/input_data.pkl")
+    with open(f"{project_dir}/data/definitions/icd_defintions.txt", "w") as file:
+        file.write(icd_definitions)
 
-    df = pd.read_pickle(f"{project_dir}/data/altered_data/input_data.pkl")
-    with open(f"{project_dir}/data/definitions/icd_defintions.txt", "r") as file:
-        icd_definitions = file.read()                    
+    # df = pd.read_pickle(f"{project_dir}/data/altered_data/input_data.pkl")
+    # with open(f"{project_dir}/data/definitions/icd_defintions.txt", "r") as file:
+    #     icd_definitions = file.read()                    
     logging.info("Inital compilation completed. Saved input_data to a pickle as well as icd_defintions to text file")
 
     logging.info("Sampling initial dataset to only include 2.5k records for each ICD code")
@@ -118,7 +118,7 @@ def main_llm_coder(project_dir, model):
     df = pd.read_pickle(f"{project_dir}/data/altered_data/prepared_data.pkl")
     all_subjects =  llmc.convert_dataframe_to_text(df)
 
-    logging.info("Converted all subjects to text")
+    # logging.info("Converted all subjects to text")
     with open(f"{project_dir}/data/definitions/icd_code_mapping.json", "r") as file:
         icd_code_mapping = json.load(file)
     sample_df = df.sample(1)
@@ -133,12 +133,14 @@ def main_llm_coder(project_dir, model):
 
     logging.info("Commencing model")
     llm_output = llmc.get_output(training_sample, all_subjects, icd_definitions, project_dir=project_dir, llm=model)
+    # llm_output = pd.read_pickle((f"{project_dir}/data/altered_data/llm_model_predicted_icd_data.pkl"))
+
     llm_output["llm_predicted_icd_code_encoded"] = llm_output.predicted_icd.apply(lambda x: icd_code_mapping[x[0]])
 
     metrics_df = pd.read_pickle(f"{project_dir}/data/eval/evaluation_metrics.pkl")
     output_df = pd.read_pickle(f"{project_dir}/data/altered_data/all_models_prediction_output.pkl")
 
-    output_df = output_df.reset_index().drop("index", axis=1)
+    output_df = output_df.reset_index()
     llm_output["llm_predicted_icd_code_encoded"] = llm_output.predicted_icd.apply(lambda x: icd_code_mapping[x[0]])
 
     output_df = output_df.reset_index().merge(
@@ -185,23 +187,23 @@ if __name__== '__main__':
     openai._utils._logs.httpx_logger.setLevel(logging.WARNING)
 
 
-    # new_start = datetime.now()
-    # main_data_prep(proj_path)
-    # end_dp = datetime.now()
-    # time_taken_dp = utils.convert_timedelta((end_dp-new_start))
-    # logging.info(f'Data Prep - {time_taken_dp}')
+    new_start = datetime.now()
+    main_data_prep(proj_path)
+    end_dp = datetime.now()
+    time_taken_dp = utils.convert_timedelta((end_dp-new_start))
+    logging.info(f'Data Prep - {time_taken_dp}')
 
-    # new_start = datetime.now()
-    # main_baseline_coder(proj_path)
-    # end_bc = datetime.now()
-    # time_taken_bc = utils.convert_timedelta((end_bc-new_start))
-    # logging.info(f'Baseline - {time_taken_bc}')
+    new_start = datetime.now()
+    main_baseline_coder(proj_path)
+    end_bc = datetime.now()
+    time_taken_bc = utils.convert_timedelta((end_bc-new_start))
+    logging.info(f'Baseline - {time_taken_bc}')
 
-    # new_start = datetime.now()
-    # main_openai_vec(proj_path)
-    # end_opv = datetime.now()
-    # time_taken_opv = utils.convert_timedelta((end_opv-new_start))
-    # logging.info(f'OpenAIvec - {time_taken_opv}')
+    new_start = datetime.now()
+    main_openai_vec(proj_path)
+    end_opv = datetime.now()
+    time_taken_opv = utils.convert_timedelta((end_opv-new_start))
+    logging.info(f'OpenAIvec - {time_taken_opv}')
 
     new_start = datetime.now()
     main_llm_coder(proj_path, model=LLM)
