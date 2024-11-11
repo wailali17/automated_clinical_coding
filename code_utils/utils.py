@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import xgboost as xgb
 import pandas as pd
 import logging
+import pickle
 
 def convert_timedelta(duration):
     """
@@ -138,6 +139,10 @@ def xgb_multiclass_model(X, y, icd_code_mapping, model_type, project_dir):
     # Calculating the AUC score to evaluate the model's discriminative ability across multiple classes, using weighted average.
 
     metrics_df = evaluation_metrics(project_dir=project_dir, y_true=y_test, y_pred=y_pred, model_type=model_type, icd_code_mapping=icd_code_mapping, auc_score=auc_score, clf=clf)
+
+
+    with open(f"{project_dir}/data/models/xgb_{model_type}.pkl", "wb") as file_model:
+        pickle.dump(clf, file_model)
     # Generating and saving a DataFrame of evaluation metrics for the trained model, including custom details like ICD mapping.
 
     return clf, metrics_df

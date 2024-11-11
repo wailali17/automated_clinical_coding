@@ -9,11 +9,11 @@ import pathlib
 import openai
 import json
 
-from code import utils
-from code import data_prep as dp
-from code import baseline_coder as bc
-from code import openai_vectorise_llm as ovl
-from code import llm_coder as llmc
+from code_utils import utils
+from code_utils import data_prep as dp
+from code_utils import baseline_coder as bc
+from code_utils import openai_vectorise_llm as ovl
+from code_utils import llm_coder as llmc
 
 
 def main_data_prep(project_dir):
@@ -155,6 +155,8 @@ def main_openai_vec(project_dir):
     flattened_df = ovl.merging_embeddings_flattening_vectorisers(df, project_dir)
     logging.info("Saved data and now running model")
 
+    # flattened_df = pd.read_pickle(f"{project_dir}/data/altered_data/openai_flattened_data.pkl")
+
     # Load evaluation metrics and ICD code mapping required for model evaluation.
     metrics_df = pd.read_pickle(f"{project_dir}/data/eval/evaluation_metrics.pkl")
     with open(f"{project_dir}/data/definitions/icd_code_mapping.json", "r") as file:
@@ -238,10 +240,6 @@ def main_llm_coder(project_dir, model):
     metrics_df = pd.read_pickle(f"{project_dir}/data/eval/evaluation_metrics.pkl")
     output_df = pd.read_pickle(f"{project_dir}/data/altered_data/all_models_prediction_output.pkl")
 
-    # Merge LLM predictions with the existing model output data.
-    output_df = output_df.reset_index()
-    llm_output["llm_predicted_icd_code_encoded"] = llm_output.predicted_icd.apply(lambda x: icd_code_mapping[x[0]])
-
     output_df = output_df.reset_index().merge(
         llm_output.rename(columns={
             "predicted_icd":"llm_predicted_icd",
@@ -262,7 +260,7 @@ def main_llm_coder(project_dir, model):
 if __name__== '__main__':
     load_dotenv()
 
-    proj_path = os.getcwd().replace("\\", "/") + "/acc_llms"
+    proj_path = os.getcwd().replace("\\", "/") 
 
     LLM = ChatOpenAI(
         model="gpt-4o-mini",

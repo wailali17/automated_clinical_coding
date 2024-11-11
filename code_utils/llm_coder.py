@@ -318,7 +318,7 @@ def get_output(training_sample, all_subjects, icd_definitions, project_dir, llm)
                         }, ignore_index=True)
                     
                     # Save the intermediate results to a temporary file to avoid data loss.
-                    df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
+                    # df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
                     iteration += 1
                 
                 # Log progress every 500 iterations.
@@ -326,8 +326,8 @@ def get_output(training_sample, all_subjects, icd_definitions, project_dir, llm)
                     logging.info(f"Iteration {i}/{len(all_subjects)}")
     
     # Save the final output to a persistent file and remove the temporary file.
-    df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data.pkl")
-    os.remove(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
+    # df_output.to_pickle(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data.pkl")
+    # os.remove(f"{project_dir}/data/altered_data/llm_model_predicted_icd_data_temp.pkl")
     
     return df_output
 
