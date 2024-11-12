@@ -66,7 +66,7 @@ def evaluation_metrics(project_dir, y_true, y_pred, model_type, icd_code_mapping
     cm = confusion_matrix(y_true, y_pred)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=icd_code_mapping.keys())
     disp.plot(cmap=plt.cm.Blues)
-    plt.title("Confusion Matrix")
+    plt.title(f"{model_type} - Confusion Matrix")
     plt.savefig(f"{project_dir}/data/eval/{model_type}_confusion_matrix.png")
 
     # Classification Report: Generates a detailed report that includes precision, recall, F1 score, 
